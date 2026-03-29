@@ -143,7 +143,7 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
                 var dialog = new ContentDialog
                 {
                     Title = "提示",
-                    Content = "请您先下载人脸识别验证模型！",
+                    Content = "请您先下载人脸识别验证模型及运行时依赖！",
                     PrimaryButtonText = "确定",
                     DefaultButton = ContentDialogButton.Primary
                 };
@@ -263,6 +263,7 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
 
         _floatingDragSourceBorder = border;
         _floatingDragStartPoint = e.GetPosition(border);
+        e.Handled = e.Pointer.Type is PointerType.Touch or PointerType.Pen;
     }
 
     private void OnFloatingTriggerItemPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -300,6 +301,7 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
         _floatingDragSourceBorder = null;
         _floatingDragStartPoint = null;
         await DragDrop.DoDragDrop(e, data, DragDropEffects.Move);
+        e.Handled = e.Pointer.Type is PointerType.Touch or PointerType.Pen;
     }
 
     private static bool TryGetDragButtonId(DragEventArgs e, out string buttonId)
