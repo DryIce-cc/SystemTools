@@ -47,11 +47,11 @@ public class Plugin : PluginBase
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
         // ========== 初始化配置 ==========
-        Console.WriteLine("[SystemTools]-------------------------------------------------------------------\r\n" 
+        Console.WriteLine("[SystemTools]-------------------------------------------------------------------\r\n"
                           + GlobalConstants.Assets.AsciiLogo
-                          + "\r\n Copyright (C) 2026 Programmer_MrWang \r\n Licensed under GNU AGPLv3. \r\n" 
+                          + "\r\n Copyright (C) 2026 Programmer_MrWang \r\n Licensed under GNU AGPLv3. \r\n"
                           + "正在初始化SystemTools配置...-----------------------------------------------------------");
-        
+
         GlobalConstants.PluginConfigFolder = PluginConfigFolder;
         GlobalConstants.Information.PluginFolder = Info.PluginFolderPath;
         GlobalConstants.Information.PluginVersion = Info.Manifest.Version;
@@ -62,7 +62,9 @@ public class Plugin : PluginBase
         services.AddLogging();
         services.AddSingleton(GlobalConstants.MainConfig);
         services.AddSingleton<FloatingWindowService>();
-        
+        services.AddSingleton<AdaptiveThemeSyncService>();
+        services.AddSingleton<UsbAutoPlayService>();
+
         // ========== 注册可选人脸识别 ==========
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -79,9 +81,10 @@ public class Plugin : PluginBase
                 }
             }
         }
-        
+
         // ========== 注册设置页面 ==========
         services.AddSettingsPage<SystemToolsSettingsPage>();
+        services.AddSettingsPage<MoreFeaturesOptionsSettingsPage>();
         if (GlobalConstants.MainConfig.Data.EnableFloatingWindowFeature)
         {
             services.AddSettingsPage<FloatingWindowEditorSettingsPage>();
@@ -106,6 +109,8 @@ public class Plugin : PluginBase
             {
                 IAppHost.GetService<FloatingWindowService>().Start();
             }
+            IAppHost.GetService<AdaptiveThemeSyncService>().Start();
+            IAppHost.GetService<UsbAutoPlayService>().Start();
             _logger = IAppHost.GetService<ILogger<Plugin>>();
 
             _logger?.LogInformation("[SystemTools]实验性功能状态: {Status}", experimentalEnabled);
@@ -157,7 +162,7 @@ public class Plugin : PluginBase
         // ========== 注册设置页面分组 ==========
         AppBase.Current.AppStarted += (_, _) => RegisterSettingsPageGroup(services);
     }
-    
+
     #region 依赖检查
 
     private void EnsureOptionalDependencyState()
@@ -243,7 +248,7 @@ public class Plugin : PluginBase
             "SystemTools.ChangeWallpaper");
         RegisterActionIfEnabled<SwitchThemeAction, ThemeSettingsControl>(services, config, "SystemTools.SwitchTheme");
 
-        // 实用工具（基础）
+        // 实用工具
         RegisterActionIfEnabled<ScreenShotAction, ScreenShotSettingsControl>(services, config,
             "SystemTools.ScreenShot");
         RegisterActionIfEnabled<SetVolumeAction, SetVolumeSettingsControl>(services, config, "SystemTools.SetVolume");
@@ -256,6 +261,10 @@ public class Plugin : PluginBase
         RegisterActionIfEnabled<ShowToastAction, ShowToastSettingsControl>(services, config, "SystemTools.ShowToast");
         RegisterActionIfEnabled<LoadTemporaryClassPlanAction, LoadTemporaryClassPlanSettingsControl>(services, config,
             "SystemTools.LoadTemporaryClassPlan");
+        
+        // 媒体工具
+        RegisterActionIfEnabled<BackgroundPlayAudioAction, BackgroundPlayAudioSettingsControl>(services, config,
+            "SystemTools.BackgroundPlayAudio");
 
         // 悬浮窗设置
         if (config.EnableFloatingWindowFeature)
@@ -293,8 +302,6 @@ public class Plugin : PluginBase
         }
     }
 
-
-
     private void RegisterBaseRules(IServiceCollection services)
     {
         var config = GlobalConstants.MainConfig!.Data;
@@ -308,13 +315,19 @@ public class Plugin : PluginBase
         if (config.IsRuleEnabled("SystemTools.UsingClassPlanRule"))
         {
             services.AddRule<UsingClassPlanRuleSettings, UsingClassPlanRuleSettingsControl>(
-                "SystemTools.UsingClassPlanRule", "正在使用某课程表", "\uE82D", HandleUsingClassPlanRule);
+                "SystemTools.UsingClassPlanRule", "正在使用某课程表", "\uE6B1", HandleUsingClassPlanRule);
         }
 
         if (config.IsRuleEnabled("SystemTools.UsingTimeLayoutRule"))
         {
             services.AddRule<UsingTimeLayoutRuleSettings, UsingTimeLayoutRuleSettingsControl>(
-                "SystemTools.UsingTimeLayoutRule", "正在使用某时间表", "\uE823", HandleUsingTimeLayoutRule);
+                "SystemTools.UsingTimeLayoutRule", "正在使用某时间表", "\uE69D", HandleUsingTimeLayoutRule);
+        }
+
+        if (config.IsRuleEnabled("SystemTools.InTimePeriodRule"))
+        {
+            services.AddRule<InTimePeriodRuleSettings, InTimePeriodRuleSettingsControl>(
+                "SystemTools.InTimePeriodRule", "是否在某时间段", "\uE4CA", HandleInTimePeriodRule);
         }
     }
 
@@ -334,6 +347,9 @@ public class Plugin : PluginBase
             "SystemTools.NextClassDisplay");
         RegisterComponentIfEnabled<BetterCarouselContainerComponent, BetterCarouselContainerSettingsControl>(services, config,
             "SystemTools.BetterCarouselContainer");
+        RegisterComponentIfEnabled<ScrollingTextComponent, ScrollingTextSettingsControl>(services, config,
+            "SystemTools.ScrollingText");
+
     }
 
     private void RegisterExperimentalFeatures(IServiceCollection services)
@@ -357,11 +373,13 @@ public class Plugin : PluginBase
     {
         _logger?.LogInformation("[SystemTools]正在注册 FFmpeg 依赖功能...");
 
-        services.AddAction<CameraCaptureAction, CameraCaptureSettingsControl>();
-
-        IActionService.ActionMenuTree["SystemTools 行动"]["实用工具…"].Add(
-            new ActionMenuTreeItem("SystemTools.CameraCapture", "摄像头抓拍", "\uE39E")
-        );
+        if (GlobalConstants.MainConfig!.Data.IsActionEnabled("SystemTools.CameraCapture"))
+        {
+            services.AddAction<CameraCaptureAction, CameraCaptureSettingsControl>();
+            IActionService.ActionMenuTree["SystemTools 行动"]["媒体工具…"].Add(
+                new ActionMenuTreeItem("SystemTools.CameraCapture", "摄像头抓拍", "\uE39E")
+            );
+        }
     }
 
     #endregion
@@ -466,6 +484,12 @@ public class Plugin : PluginBase
             BuildUtilityMenu(config);
         }
 
+        if (config.EnableFfmpegFeatures || HasAnyActionEnabled(config, "SystemTools.BackgroundPlayAudio"))
+        {
+            IActionService.ActionMenuTree["SystemTools 行动"].Add(new ActionMenuTreeGroup("媒体工具…", "\uE342"));
+            BuildMediaToolsMenu(config);
+        }
+
         if (HasAnyActionEnabled(config, "SystemTools.ClearAllNotifications", "SystemTools.RestartAsAdmin", "SystemTools.LoadTemporaryClassPlan"))
         {
             IActionService.ActionMenuTree["SystemTools 行动"].Add(new ActionMenuTreeGroup("ClassIsland…", "\uE5CB"));
@@ -558,6 +582,24 @@ public class Plugin : PluginBase
         }
 
         return timeLayout.IsActivated;
+    }
+
+    private static bool HandleInTimePeriodRule(object? settings)
+    {
+        if (settings is not InTimePeriodRuleSettings ruleSettings ||
+            !TimeSpan.TryParse(ruleSettings.StartTime, out var start) ||
+            !TimeSpan.TryParse(ruleSettings.EndTime, out var end))
+        {
+            return false;
+        }
+
+        var current = IAppHost.TryGetService<IExactTimeService>()?.GetCurrentLocalDateTime().TimeOfDay ?? DateTime.Now.TimeOfDay;
+        if (start <= end)
+        {
+            return current >= start && current <= end;
+        }
+
+        return current >= start || current <= end;
     }
 
     private void BuildSimulationMenu(MainConfigData config)
@@ -699,6 +741,18 @@ public class Plugin : PluginBase
         }
     }
 
+    private void BuildMediaToolsMenu(MainConfigData config)
+    {
+        var items = new List<ActionMenuTreeItem>();
+        if (config.IsActionEnabled("SystemTools.BackgroundPlayAudio"))
+            items.Add(new ActionMenuTreeItem("SystemTools.BackgroundPlayAudio", "后台播放音频", "\uEBCC"));
+
+        if (items.Count > 0)
+        {
+            IActionService.ActionMenuTree["SystemTools 行动"]["媒体工具…"].AddRange(items);
+        }
+    }
+
 
     private void BuildFloatingWindowMenu(MainConfigData config)
     {
@@ -775,6 +829,9 @@ public class Plugin : PluginBase
 
     private void OnAppStopping(object? sender, EventArgs e)
     {
+        IAppHost.GetService<AdaptiveThemeSyncService>().Stop();
+        IAppHost.GetService<UsbAutoPlayService>().Stop();
+        AdvancedShutdownAction.CancelPlanOnAppStopping();
         if (GlobalConstants.MainConfig?.Data.EnableFloatingWindowFeature == true)
         {
             IAppHost.GetService<FloatingWindowService>().Stop();

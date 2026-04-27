@@ -31,6 +31,8 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
     private Animation? _slideOutAnimation;
     private Animation? _flashInAnimation;
     private Animation? _flashOutAnimation;
+    private Animation? _fadeInAnimation;
+    private Animation? _fadeOutAnimation;
 
     private int _selectedIndex;
     private int _playDirection = 1;
@@ -76,6 +78,8 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
     public double CurrentProgressPercent { get; private set; }
 
     public int AnimationStyleValue => (int)Settings.AnimationStyle;
+    public bool ShowTopProgressBar => Settings.ShowProgressBar && Settings.ProgressBarPosition == BetterCarouselProgressBarPosition.Top;
+    public bool ShowBottomProgressBar => Settings.ShowProgressBar && Settings.ProgressBarPosition == BetterCarouselProgressBarPosition.Bottom;
 
     public new event PropertyChangedEventHandler? PropertyChanged;
 
@@ -210,6 +214,46 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
                 }
             }
         };
+
+        _fadeInAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(250),
+            FillMode = FillMode.Forward,
+            Easing = new QuadraticEaseOut(),
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters = { new Setter(Visual.OpacityProperty, 0d) }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters = { new Setter(Visual.OpacityProperty, 1d) }
+                }
+            }
+        };
+
+        _fadeOutAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(200),
+            FillMode = FillMode.Forward,
+            Easing = new QuadraticEaseIn(),
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters = { new Setter(Visual.OpacityProperty, 1d) }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters = { new Setter(Visual.OpacityProperty, 0d) }
+                }
+            }
+        };
     }
 
     private async Task AnimateTransitionAsync(int fromIndex, int toIndex)
@@ -228,9 +272,12 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
                 fromItem.RenderTransform = new TranslateTransform();
             }
 
-            var outAnimation = Settings.AnimationStyle == BetterCarouselAnimationStyle.Flash 
-                ? _flashOutAnimation 
-                : _slideOutAnimation;
+            var outAnimation = Settings.AnimationStyle switch
+            {
+                BetterCarouselAnimationStyle.Flash => _flashOutAnimation,
+                BetterCarouselAnimationStyle.Fade => _fadeOutAnimation,
+                _ => _slideOutAnimation
+            };
             
             if (outAnimation != null)
             {
@@ -253,9 +300,12 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
             toItem.Opacity = 0;
             toItem.IsVisible = true;
 
-            var inAnimation = Settings.AnimationStyle == BetterCarouselAnimationStyle.Flash 
-                ? _flashInAnimation 
-                : _slideInAnimation;
+            var inAnimation = Settings.AnimationStyle switch
+            {
+                BetterCarouselAnimationStyle.Flash => _flashInAnimation,
+                BetterCarouselAnimationStyle.Fade => _fadeInAnimation,
+                _ => _slideInAnimation
+            };
             
             if (inAnimation != null)
             {
@@ -323,15 +373,15 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
             OnPropertyChanged(nameof(AnimationStyleValue));
         }
 
-        if (e.PropertyName is nameof(Settings.ShowProgressBar))
+        if (e.PropertyName is nameof(Settings.ShowProgressBar) or nameof(Settings.ProgressBarPosition))
         {
-            PseudoClasses.Set(":progress-visible", Settings.ShowProgressBar);
+            OnPropertyChanged(nameof(ShowTopProgressBar));
+            OnPropertyChanged(nameof(ShowBottomProgressBar));
         }
 
         if (e.PropertyName is nameof(Settings.RotationMode) or nameof(Settings.IsAnimationEnabled) or nameof(Settings.ShowProgressBar))
         {
             UpdateProgressState(resetWhenIdle: true);
-            return;
         }
 
         if (e.PropertyName == nameof(Settings.ComponentDisplayDurations))
@@ -339,6 +389,7 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
             Settings.NormalizeDisplayDurations();
             RestartProgress();
         }
+
     }
 
     private void OnChildrenCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -416,8 +467,6 @@ public partial class BetterCarouselContainerComponent : ComponentBase<BetterCaro
 
     private void UpdateProgressState(bool resetWhenIdle = false)
     {
-        PseudoClasses.Set(":progress-visible", Settings.ShowProgressBar);
-
         var displayable = GetDisplayableIndexes();
         if (displayable.Length == 0)
         {

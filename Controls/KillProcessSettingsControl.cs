@@ -29,7 +29,6 @@ public class KillProcessSettingsControl : ActionSettingsControlBase<KillProcessS
         panel.Children.Add(new TextBlock
         {
             Text = "进程名:",
-            FontWeight = FontWeight.Bold,
             Margin = new(0, 5, 0, 0)
         });
 

@@ -40,24 +40,30 @@
             </Setter>
         </Style>
 
-        <Style Selector="local|BetterCarouselContainerComponent ProgressBar#DisplayProgressBar">
-            <Setter Property="IsVisible" Value="False" />
-            <Setter Property="MinWidth" Value="0" />
-        </Style>
-
-        <Style Selector="local|BetterCarouselContainerComponent:progress-visible ProgressBar#DisplayProgressBar">
-            <Setter Property="IsVisible" Value="True" />
-        </Style>
     </ci:ComponentBase.Styles>
 
     <Grid DataContext="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=local:BetterCarouselContainerComponent}}"
           x:Name="GridRoot">
-        
+
+        <ProgressBar x:Name="DisplayProgressBarTop"
+                     VerticalAlignment="Top"
+                     HorizontalAlignment="Stretch"
+                     Margin="0"
+                     Height="4"
+                     MinWidth="0"
+                     Minimum="0"
+                     Maximum="100"
+                     IsVisible="{Binding ShowTopProgressBar, Mode=OneWay}"
+                     Value="{Binding CurrentProgressPercent, Mode=OneWay}" />
+
         <StackPanel Orientation="Horizontal" 
                     Spacing="0"
                     VerticalAlignment="Center"
                     HorizontalAlignment="Stretch">
-            
+            <TextBlock Text=">"
+                       IsVisible="{Binding Settings.ShowSideSeparators}"
+                       VerticalAlignment="Center"
+                       Margin="0,0,4,0" />
             <ListBox x:Name="CarouselListBox"
                      Background="Transparent"
                      BorderThickness="0"
@@ -102,21 +108,26 @@
                                                    HidingRules="{Binding HidingRules, Mode=OneWay}"
                                                    HideOnRule="{Binding HideOnRule, Mode=OneWay}"
                                                    VerticalAlignment="Center"
-                                                   Margin="0" />
+                             Margin="0" />
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+            <TextBlock Text="&lt;"
+                       IsVisible="{Binding Settings.ShowSideSeparators}"
+                       VerticalAlignment="Center"
+                       Margin="4,0,0,0" />
         </StackPanel>
 
-        <ProgressBar x:Name="DisplayProgressBar"
+        <ProgressBar x:Name="DisplayProgressBarBottom"
                      VerticalAlignment="Bottom"
                      HorizontalAlignment="Stretch"
-                     Margin="0,6,0,0"
+                     Margin="0"
                      Height="4"
                      MinWidth="0"
                      Minimum="0"
                      Maximum="100"
+                     IsVisible="{Binding ShowBottomProgressBar, Mode=OneWay}"
                      Value="{Binding CurrentProgressPercent, Mode=OneWay}" />
     </Grid>
 </ci:ComponentBase>

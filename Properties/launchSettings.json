@@ -2,9 +2,9 @@
   "profiles": {
     "ClassIsland 插件": {
       "commandName": "Executable",
-      "executablePath": "F:\\ci\\Newest\\app-2.0.2.0-0\\ClassIsland.Desktop.exe",
+      "executablePath": "$(ClassIsland_DebugBinaryFile)",
       "commandLineArgs": "-epp $(TargetDir)",
-      "workingDirectory": "F:\\ci\\Newest\\"
+      "workingDirectory": "$(ClassIsland_DebugBinaryDirectory)"
     }
   }
 }

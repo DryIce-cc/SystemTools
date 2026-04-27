@@ -57,6 +57,7 @@ public partial class BetterCarouselContainerSettingsControl : ComponentBase<Bett
 
     public Array RotationModes { get; } = Enum.GetValues(typeof(BetterCarouselRotationMode));
     public Array AnimationStyles { get; } = Enum.GetValues(typeof(BetterCarouselAnimationStyle));
+    public Array ProgressBarPositions { get; } = Enum.GetValues(typeof(BetterCarouselProgressBarPosition));
 
     public bool HasDurationItems => DurationItems.Count > 0;
 

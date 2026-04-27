@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using SystemTools.Models.ComponentSettings;
 using RoutedEventArgs = Avalonia.Interactivity.RoutedEventArgs;
@@ -29,6 +30,7 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
     private const double SwapMotionOffset = 20;
 
     private readonly DispatcherTimer _carouselTimer;
+    private readonly DispatcherTimer _progressTimer;
     private readonly List<string> _quotes = [];
     private readonly Animation _swapOutAnimation;
     private readonly Animation _swapInAnimation;
@@ -36,6 +38,8 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
     private string _loadedPath = string.Empty;
     private bool _isAnimating;
     private string _currentQuote = "（请先在组件设置中选择 txt 文件）";
+    private DateTime _displayStartedAt = DateTime.UtcNow;
+    private double _currentCycleDurationSeconds = 6;
 
     public string CurrentQuote
     {
@@ -49,9 +53,19 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
 
     public new event PropertyChangedEventHandler? PropertyChanged;
 
+    public double CurrentProgressPercent { get; private set; }
+    public bool ShowTopProgressBar => Settings.ShowProgressBar && Settings.ProgressBarPosition == LocalQuoteProgressBarPosition.Top;
+    public bool ShowBottomProgressBar => Settings.ShowProgressBar && Settings.ProgressBarPosition == LocalQuoteProgressBarPosition.Bottom;
+
     protected virtual void OnPropertyChanged(string propertyName)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    static LocalQuoteComponent()
+    {
+        // 注册编码提供程序以支持 GBK 等本地编码
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
     public LocalQuoteComponent()
@@ -60,6 +74,8 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
 
         _carouselTimer = new DispatcherTimer();
         _carouselTimer.Tick += OnCarouselTicked;
+        _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _progressTimer.Tick += (_, _) => UpdateProgressState();
 
         _swapOutAnimation = new Animation
         {
@@ -121,15 +137,19 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
     private void LocalQuoteComponent_OnLoaded(object? sender, RoutedEventArgs e)
     {
         Settings.PropertyChanged += OnSettingsPropertyChanged;
-        RefreshTimerInterval();
-        LoadQuotesFromFile(Settings.QuotesFilePath, showFirstQuote: true);
-        _carouselTimer.Start();
+        
+        // 1. 先加载文件数据
+        LoadQuotesFromFile(Settings.QuotesFilePath, showFirstQuote: false);
+        
+        // 2. 恢复状态
+        RestoreStateAndStartTimer();
     }
 
     private void LocalQuoteComponent_OnUnloaded(object? sender, RoutedEventArgs e)
     {
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         _carouselTimer.Stop();
+        _progressTimer.Stop();
     }
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -137,13 +157,74 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         if (e.PropertyName == nameof(Settings.CarouselIntervalSeconds))
         {
             RefreshTimerInterval();
+            EnsureTimersForQuoteState();
+            return;
+        }
+
+        if (e.PropertyName is nameof(Settings.ShowProgressBar) or nameof(Settings.ProgressBarPosition))
+        {
+            OnPropertyChanged(nameof(ShowTopProgressBar));
+            OnPropertyChanged(nameof(ShowBottomProgressBar));
             return;
         }
 
         if (e.PropertyName == nameof(Settings.QuotesFilePath))
         {
             LoadQuotesFromFile(Settings.QuotesFilePath, showFirstQuote: true);
+            EnsureTimersForQuoteState();
         }
+    }
+
+    /// <summary>
+    /// 恢复上次播放状态并启动计时器
+    /// </summary>
+    private void RestoreStateAndStartTimer()
+    {
+        if (_quotes.Count == 0)
+        {
+            return;
+        }
+
+        double initialDelay = Settings.CarouselIntervalSeconds;
+
+        if (Settings.IsPersistenceEnabled)
+        {
+            // 恢复索引：检查索引有效性，防止文件被外部修改后行数变少导致越界
+            if (Settings.LastIndex >= 0 && Settings.LastIndex < _quotes.Count)
+            {
+                _currentIndex = Settings.LastIndex;
+            }
+            else
+            {
+                _currentIndex = 0;
+            }
+            
+            CurrentQuote = _quotes[_currentIndex];
+
+            // 计算上次切换到现在经过了多久
+            var elapsed = (DateTime.Now - Settings.LastSwitchTime).TotalSeconds;
+            
+            // 计算初次触发的剩余时间
+            if (elapsed >= 0 && elapsed < Settings.CarouselIntervalSeconds)
+            {
+                initialDelay = Settings.CarouselIntervalSeconds - elapsed;
+            }
+            else
+            {
+                // 如果已经超时，则给一个极短的延迟准备切换下一行
+                initialDelay = 0.5; 
+            }
+        }
+        else
+        {
+            // 如果没开记忆，显示第一行并正常启动
+            ShowNextQuote();
+        }
+
+        _carouselTimer.Interval = TimeSpan.FromSeconds(initialDelay);
+        RestartProgressCycle(initialDelay);
+        _carouselTimer.Start();
+        _progressTimer.Start();
     }
 
     private void OnCarouselTicked(object? sender, EventArgs e)
@@ -151,6 +232,12 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         if (_quotes.Count == 0 || _isAnimating)
         {
             return;
+        }
+
+        // 如果当前的间隔不是标准设定的间隔（说明刚处理完“记忆剩余时间”），恢复标准间隔
+        if (Math.Abs(_carouselTimer.Interval.TotalSeconds - Settings.CarouselIntervalSeconds) > 0.1)
+        {
+            RefreshTimerInterval();
         }
 
         if (!string.Equals(_loadedPath, Settings.QuotesFilePath, StringComparison.Ordinal))
@@ -164,8 +251,9 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
 
     private void RefreshTimerInterval()
     {
-        var interval = Math.Max(1, Settings.CarouselIntervalSeconds);
+        var interval = Math.Clamp(Settings.CarouselIntervalSeconds, 1, 8000);
         _carouselTimer.Interval = TimeSpan.FromSeconds(interval);
+        RestartProgressCycle(interval);
     }
 
     private void LoadQuotesFromFile(string path, bool showFirstQuote)
@@ -177,30 +265,43 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
 
         if (string.IsNullOrWhiteSpace(path))
         {
+            _carouselTimer.Stop();
+            _progressTimer.Stop();
             CurrentQuote = "（请先在组件设置中选择 txt 文件）";
             return;
         }
 
         if (!File.Exists(path))
         {
+            _carouselTimer.Stop();
+            _progressTimer.Stop();
             CurrentQuote = "（txt 文件不存在）";
             return;
         }
 
         try
         {
-            var lines = File.ReadAllLines(path)
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            if (lines.Count == 0)
+            // 改进：支持多种编码。使用 StreamReader 自动检测 BOM
+            using (var reader = new StreamReader(path, Encoding.UTF8, true))
             {
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var trimmed = line.Trim();
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                    {
+                        _quotes.Add(trimmed);
+                    }
+                }
+            }
+
+            if (_quotes.Count == 0)
+            {
+                _carouselTimer.Stop();
+                _progressTimer.Stop();
                 CurrentQuote = "（文件中没有可显示内容）";
                 return;
             }
-
-            _quotes.AddRange(lines);
 
             if (showFirstQuote)
             {
@@ -209,6 +310,8 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         }
         catch
         {
+            _carouselTimer.Stop();
+            _progressTimer.Stop();
             CurrentQuote = "（读取 txt 文件失败）";
         }
     }
@@ -220,8 +323,19 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
             return;
         }
 
+        // 进度条语义为“距离下一次切换开始的剩余时间”，
+        // 因此需要在当前轮换开始时立即重置，而不是等动画播放完成后再重置。
+        RestartProgressCycle(_carouselTimer.Interval.TotalSeconds);
+
         _currentIndex = (_currentIndex + 1) % _quotes.Count;
         var next = _quotes[_currentIndex];
+
+        // 更新持久化数据
+        if (Settings.IsPersistenceEnabled)
+        {
+            Settings.LastIndex = _currentIndex;
+            Settings.LastSwitchTime = DateTime.Now;
+        }
 
         if (!Settings.EnableAnimation)
         {
@@ -259,6 +373,60 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         else
         {
             QuoteTextBlock.RenderTransform = new TranslateTransform();
+        }
+    }
+
+    private void RestartProgressCycle(double durationSeconds)
+    {
+        _currentCycleDurationSeconds = Math.Max(1, durationSeconds);
+        _displayStartedAt = DateTime.UtcNow;
+        UpdateProgressState();
+    }
+
+    private void UpdateProgressState()
+    {
+        if (_quotes.Count == 0 || !Settings.ShowProgressBar)
+        {
+            SetProgress(0);
+            return;
+        }
+
+        var elapsed = (DateTime.UtcNow - _displayStartedAt).TotalSeconds;
+        var ratio = Math.Clamp(elapsed / _currentCycleDurationSeconds, 0, 1);
+        SetProgress(ratio * 100);
+    }
+
+    private void SetProgress(double progress)
+    {
+        if (Math.Abs(CurrentProgressPercent - progress) < 0.1)
+        {
+            return;
+        }
+
+        CurrentProgressPercent = progress;
+        OnPropertyChanged(nameof(CurrentProgressPercent));
+    }
+
+    private void EnsureTimersForQuoteState()
+    {
+        if (_quotes.Count == 0)
+        {
+            _carouselTimer.Stop();
+            _progressTimer.Stop();
+            return;
+        }
+
+        if (!_carouselTimer.IsEnabled)
+        {
+            var interval = Math.Clamp(Settings.CarouselIntervalSeconds, 1, 8000);
+            _carouselTimer.Interval = TimeSpan.FromSeconds(interval);
+            RestartProgressCycle(interval);
+            _carouselTimer.Start();
+        }
+
+        if (!_progressTimer.IsEnabled)
+        {
+            _progressTimer.Start();
         }
     }
 }
