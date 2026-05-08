@@ -174,6 +174,7 @@ public partial class SystemToolsSettingsViewModel : ObservableObject, IDisposabl
             ("SystemTools.WindowOperation", "窗口操作", "模拟操作"),
             ("SystemTools.AltF4", "按下 Alt+F4", "常用模拟键"),
             ("SystemTools.AltTab", "按下 Alt+Tab", "常用模拟键"),
+            ("SystemTools.AltTab", "按下 Ctrl+Z", "常用模拟键"),
             ("SystemTools.EnterKey", "按下 Enter 键", "常用模拟键"),
             ("SystemTools.EscKey", "按下 Esc 键", "常用模拟键"),
             ("SystemTools.F11Key", "按下 F11 键", "常用模拟键"),

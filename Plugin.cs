@@ -8,29 +8,31 @@ using ClassIsland.Core.Assists;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Controls;
 using ClassIsland.Core.Extensions.Registry;
-using ClassIsland.Core.Services.Registry;
-using ClassIsland.Shared;
 using ClassIsland.Core.Helpers;
 using ClassIsland.Core.Models.Automation;
+using ClassIsland.Core.Services.Registry;
+using ClassIsland.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SystemTools.Actions;
-using SystemTools.Models.ComponentSettings;
 using SystemTools.ConfigHandlers;
 using SystemTools.Controls;
 using SystemTools.Controls.Components;
+using SystemTools.Models.ComponentSettings;
 using SystemTools.Rules;
 using SystemTools.Services;
 using SystemTools.Settings;
 using SystemTools.Shared;
 using SystemTools.Triggers;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.InteropServices;
 using Windows.Media.Control;
+using WinMedia = Windows.Media.Control;
+
 
 namespace SystemTools;
 /*
@@ -142,7 +144,6 @@ public class Plugin : PluginBase
                 _logger?.LogWarning("[SystemTools]人脸识别功能已自动关闭：缺少 runtimes、Models 或 OpenCvSharp/Dlib 依赖，并已清理对应验证器配置。");
             }
             _logger?.LogInformation("[SystemTools]SystemTools 启动完成");
-            RegisterToggleFloatingWindowMenuItem();
         };
 
         // ========== 注册实验性功能 ==========
@@ -225,6 +226,7 @@ public class Plugin : PluginBase
         RegisterActionIfEnabled<EnterKeyAction>(services, config, "SystemTools.EnterKey");
         RegisterActionIfEnabled<EscAction>(services, config, "SystemTools.EscKey");
         RegisterActionIfEnabled<AltF4Action>(services, config, "SystemTools.AltF4");
+        RegisterActionIfEnabled<CtrlZAction>(services, config, "SystemTools.CtrlZ");
         RegisterActionIfEnabled<AltTabAction>(services, config, "SystemTools.AltTab");
         RegisterActionIfEnabled<F11Action>(services, config, "SystemTools.F11Key");
 
@@ -458,7 +460,7 @@ public class Plugin : PluginBase
         // 模拟操作
         if (HasAnyActionEnabled(config, "SystemTools.SimulateKeyboard", "SystemTools.SimulateMouse",
                 "SystemTools.TypeContent", "SystemTools.WindowOperation", "SystemTools.EnterKey",
-                "SystemTools.EscKey", "SystemTools.AltF4", "SystemTools.AltTab", "SystemTools.F11Key"))
+                "SystemTools.EscKey", "SystemTools.AltF4", "SystemTools.AltTab", "SystemTools.CtrlZ", "SystemTools.F11Key"))
         {
             IActionService.ActionMenuTree["SystemTools 行动"].Add(new ActionMenuTreeGroup("模拟操作…", "\uEA0B"));
             BuildSimulationMenu(config);
@@ -623,18 +625,29 @@ public class Plugin : PluginBase
 
     private static bool HandleMediaMusicPlayingRule(object? settings)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134))
+        {
+            return false;
+        }
+
         try
         {
-            var manager = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask()
-                .GetAwaiter().GetResult();
-            var session = manager?.GetCurrentSession();
-            if (session == null)
-            {
-                return false;
-            }
+            var manager = WinMedia.GlobalSystemMediaTransportControlsSessionManager.RequestAsync()
+                .AsTask().GetAwaiter().GetResult();
 
-            var playbackInfo = session.GetPlaybackInfo();
-            return playbackInfo?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            if (manager == null)
+                return false;
+
+            var sessions = manager.GetSessions();
+            if (sessions == null || sessions.Count == 0)
+                return false;
+
+            return sessions.Any(session =>
+            {
+                var playbackInfo = session.GetPlaybackInfo();
+                return playbackInfo != null &&
+                       playbackInfo.PlaybackStatus == WinMedia.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            });
         }
         catch
         {
@@ -666,6 +679,8 @@ public class Plugin : PluginBase
             commonKeys.Add(new ActionMenuTreeItem("SystemTools.AltF4", "按下 Alt+F4", "\uEA0B"));
         if (config.IsActionEnabled("SystemTools.AltTab"))
             commonKeys.Add(new ActionMenuTreeItem("SystemTools.AltTab", "按下 Alt+Tab", "\uEA0B"));
+        if (config.IsActionEnabled("SystemTools.CtrlZ"))
+            commonKeys.Add(new ActionMenuTreeItem("SystemTools.CtrlZ", "按下 Ctrl+Z", "\uEA0B"));
         if (config.IsActionEnabled("SystemTools.EnterKey"))
             commonKeys.Add(new ActionMenuTreeItem("SystemTools.EnterKey", "按下 Enter 键", "\uEA0B"));
         if (config.IsActionEnabled("SystemTools.EscKey"))
@@ -839,55 +854,6 @@ public class Plugin : PluginBase
         {
             IActionService.ActionMenuTree["SystemTools 行动"]["ClassIsland…"].AddRange(items);
         }
-    }
-
-    #endregion
-
-    #region 托盘更多选项
-
-    private void RegisterToggleFloatingWindowMenuItem()
-    {
-        var config = GlobalConstants.MainConfig?.Data;
-        if (config?.EnableFloatingWindowFeature != true)
-        {
-            return;
-        }
-
-        var taskBarIconService = IAppHost.TryGetService<ITaskBarIconService>();
-        if (_toggleFloatingWindowMenuItem != null)
-        {
-            return;
-        }
-
-        if (taskBarIconService?.MoreOptionsMenu == null)
-        {
-            if (_toggleMenuRegisterRetryCount < 20)
-            {
-                _toggleMenuRegisterRetryCount++;
-                DispatcherTimer.RunOnce(RegisterToggleFloatingWindowMenuItem, TimeSpan.FromMilliseconds(250));
-            }
-            return;
-        }
-
-        _toggleFloatingWindowMenuItem = new NativeMenuItem("切换悬浮窗显示")
-        {
-            [NativeMenuItemAssist.IconSourceProperty] = new FluentIconSource("\uEA37")
-        };
-
-        _toggleFloatingWindowMenuItem.Click += (_, _) =>
-        {
-            var settings = GlobalConstants.MainConfig?.Data;
-            if (settings == null)
-            {
-                return;
-            }
-
-            settings.ShowFloatingWindow = !settings.ShowFloatingWindow;
-            IAppHost.TryGetService<FloatingWindowService>()?.UpdateWindowState();
-            GlobalConstants.MainConfig?.Save();
-        };
-
-        taskBarIconService.MoreOptionsMenuItems.Add(_toggleFloatingWindowMenuItem);
     }
 
     #endregion
