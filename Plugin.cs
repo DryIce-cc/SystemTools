@@ -258,6 +258,7 @@ public class Plugin : PluginBase
         RegisterActionIfEnabled<ChangeWallpaperAction, ChangeWallpaperSettingsControl>(services, config,
             "SystemTools.ChangeWallpaper");
         RegisterActionIfEnabled<SwitchThemeAction, ThemeSettingsControl>(services, config, "SystemTools.SwitchTheme");
+        RegisterActionIfEnabled<SwitchSystemAccentColorAction, AccentColorSettingsControl>(services, config, "SystemTools.SwitchSystemAccentColor");
 
         // 实用工具
         RegisterActionIfEnabled<ScreenShotAction, ScreenShotSettingsControl>(services, config,
@@ -491,7 +492,7 @@ public class Plugin : PluginBase
         }
 
         // 系统个性化
-        if (HasAnyActionEnabled(config, "SystemTools.ChangeWallpaper", "SystemTools.SwitchTheme"))
+        if (HasAnyActionEnabled(config, "SystemTools.ChangeWallpaper", "SystemTools.SwitchTheme", "SystemTools.SwitchSystemAccentColor"))
         {
             IActionService.ActionMenuTree["SystemTools 行动"].Add(new ActionMenuTreeGroup("系统个性化…", "\uF42F"));
             BuildPersonalizationMenu(config);
@@ -625,6 +626,9 @@ public class Plugin : PluginBase
         return current >= start || current <= end;
     }
 
+    private static DateTime _lastMediaRuleCheckAt = DateTime.MinValue;
+    private static bool _lastMediaRuleResult;
+
     private static bool HandleMediaMusicPlayingRule(object? settings)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134))
@@ -632,28 +636,32 @@ public class Plugin : PluginBase
             return false;
         }
 
+        var now = DateTime.UtcNow;
+        if (now - _lastMediaRuleCheckAt < TimeSpan.FromMilliseconds(800))
+        {
+            return _lastMediaRuleResult;
+        }
+
         try
         {
             var manager = WinMedia.GlobalSystemMediaTransportControlsSessionManager.RequestAsync()
                 .AsTask().GetAwaiter().GetResult();
 
-            if (manager == null)
-                return false;
-
-            var sessions = manager.GetSessions();
-            if (sessions == null || sessions.Count == 0)
-                return false;
-
-            return sessions.Any(session =>
+            var sessions = manager?.GetSessions();
+            var isPlaying = sessions != null && sessions.Any(session =>
             {
                 var playbackInfo = session.GetPlaybackInfo();
-                return playbackInfo != null &&
-                       playbackInfo.PlaybackStatus == WinMedia.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                return playbackInfo?.PlaybackStatus == WinMedia.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             });
+
+            _lastMediaRuleResult = isPlaying;
+            _lastMediaRuleCheckAt = now;
+            return isPlaying;
         }
         catch
         {
-            return false;
+            _lastMediaRuleCheckAt = now;
+            return _lastMediaRuleResult;
         }
     }
 
@@ -768,6 +776,8 @@ public class Plugin : PluginBase
             items.Add(new ActionMenuTreeItem("SystemTools.ChangeWallpaper", "切换壁纸", "\uE9BC"));
         if (config.IsActionEnabled("SystemTools.SwitchTheme"))
             items.Add(new ActionMenuTreeItem("SystemTools.SwitchTheme", "切换主题色", "\uF42F"));
+        if (config.IsActionEnabled("SystemTools.SwitchSystemAccentColor"))
+            items.Add(new ActionMenuTreeItem("SystemTools.SwitchSystemAccentColor", "切换系统强调色", "\uE790"));
 
         if (items.Count > 0)
         {

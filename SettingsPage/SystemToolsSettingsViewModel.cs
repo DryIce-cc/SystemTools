@@ -195,6 +195,7 @@ public partial class SystemToolsSettingsViewModel : ObservableObject, IDisposabl
             ("SystemTools.Delete", "删除", "文件操作"),
             ("SystemTools.ChangeWallpaper", "切换壁纸", "系统个性化"),
             ("SystemTools.SwitchTheme", "切换主题色", "系统个性化"),
+            ("SystemTools.SwitchSystemAccentColor", "切换系统强调色", "系统个性化"),
             ("SystemTools.FullscreenClock", "沉浸式时钟", "其他工具"),
             ("SystemTools.KillProcess", "退出进程", "实用工具"),
             ("SystemTools.ScreenShot", "屏幕截图", "实用工具"),
