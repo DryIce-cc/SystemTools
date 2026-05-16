@@ -15,7 +15,7 @@ public class ShowFloatingWindowSettingsControl : ActionSettingsControlBase<ShowF
 
         _toggleSwitch = new ToggleSwitch
         {
-            Header = "显示悬浮窗",
+            Content = "显示悬浮窗",
             IsChecked = true
         };
 

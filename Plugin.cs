@@ -73,6 +73,7 @@ public class Plugin : PluginBase
         services.AddSingleton<FloatingWindowService>();
         services.AddSingleton<AdaptiveThemeSyncService>();
         services.AddSingleton<UsbAutoPlayService>();
+        services.AddSingleton<ClassIslandMemoryAutoCleanupService>();
 
         // ========== 注册可选人脸识别 ==========
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -120,6 +121,7 @@ public class Plugin : PluginBase
             }
             IAppHost.GetService<AdaptiveThemeSyncService>().Start();
             IAppHost.GetService<UsbAutoPlayService>().Start();
+            IAppHost.GetService<ClassIslandMemoryAutoCleanupService>().ApplyConfig();
             _logger = IAppHost.GetService<ILogger<Plugin>>();
 
             _logger?.LogInformation("[SystemTools]实验性功能状态: {Status}", experimentalEnabled);
@@ -906,6 +908,7 @@ public class Plugin : PluginBase
     {
         IAppHost.GetService<AdaptiveThemeSyncService>().Stop();
         IAppHost.GetService<UsbAutoPlayService>().Stop();
+        IAppHost.GetService<ClassIslandMemoryAutoCleanupService>().Stop();
         AdvancedShutdownAction.CancelPlanOnAppStopping();
         if (GlobalConstants.MainConfig?.Data.EnableFloatingWindowFeature == true)
         {

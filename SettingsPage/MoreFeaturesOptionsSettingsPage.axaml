@@ -26,6 +26,16 @@
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
+            <controls:SettingsExpander IconSource="{ci:FluentIconSource &#xE9D9;}"
+                                       Header="自动清理 ClassIsland 内存"
+                                       Description="开启后每30秒检测一次；当内存占用超过500MB时自动执行垃圾回收与工作集修剪。">
+                <controls:SettingsExpander.Footer>
+                    <ToggleSwitch IsChecked="{Binding Config.AutoCleanupClassIslandMemory, Mode=TwoWay}"
+                                  Checked="AutoCleanupMemoryToggle_OnChanged"
+                                  Unchecked="AutoCleanupMemoryToggle_OnChanged" />
+                </controls:SettingsExpander.Footer>
+            </controls:SettingsExpander>
+
         </StackPanel>
     </ScrollViewer>
 </ci:SettingsPageBase>

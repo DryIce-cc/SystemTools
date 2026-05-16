@@ -116,6 +116,21 @@ public class MainConfigData : INotifyPropertyChanged
     }
 
 
+
+    bool _autoCleanupClassIslandMemory;
+
+    [JsonPropertyName("autoCleanupClassIslandMemory")]
+    public bool AutoCleanupClassIslandMemory
+    {
+        get => _autoCleanupClassIslandMemory;
+        set
+        {
+            if (value == _autoCleanupClassIslandMemory) return;
+            _autoCleanupClassIslandMemory = value;
+            OnPropertyChanged();
+        }
+    }
+
     bool _autoHideMainWindowWhenOccluded;
 
     [JsonPropertyName("autoHideMainWindowWhenOccluded")]
