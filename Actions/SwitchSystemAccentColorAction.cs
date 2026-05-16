@@ -35,13 +35,13 @@ public class SwitchSystemAccentColorAction(ILogger<SwitchSystemAccentColorAction
             var colorizationDword = (0xC4u << 24) | ((uint)color.B << 16) | ((uint)color.G << 8) | color.R;
 
             using var dwmKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\DWM");
-            dwmKey?.SetValue("AccentColor", dword, RegistryValueKind.DWord);
-            dwmKey?.SetValue("ColorizationColor", colorizationDword, RegistryValueKind.DWord);
-            dwmKey?.SetValue("ColorizationAfterglow", colorizationDword, RegistryValueKind.DWord);
+            dwmKey?.SetValue("AccentColor", unchecked((int)dword), RegistryValueKind.DWord);
+            dwmKey?.SetValue("ColorizationColor", unchecked((int)colorizationDword), RegistryValueKind.DWord);
+            dwmKey?.SetValue("ColorizationAfterglow", unchecked((int)colorizationDword), RegistryValueKind.DWord);
             dwmKey?.SetValue("ColorPrevalence", 1, RegistryValueKind.DWord);
 
             using var explorerKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent");
-            explorerKey?.SetValue("AccentColorMenu", dword, RegistryValueKind.DWord);
+            explorerKey?.SetValue("AccentColorMenu", unchecked((int)dword), RegistryValueKind.DWord);
 
             // 通知 Windows 刷新主题色
             SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SETTINGCHANGE, (UIntPtr)0, "ImmersiveColorSet", SMTO_ABORTIFHUNG, 5000, out _);
